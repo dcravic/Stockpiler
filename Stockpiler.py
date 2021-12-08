@@ -15,6 +15,15 @@ import csv
 import re
 import xlsxwriter
 import threading
+### Accessing Google Sheet ###
+from oauth2client.service_account import ServiceAccountCredentials
+import gspread 
+from gspread.cell import Cell
+import pandas as pd
+import requests
+import pytz
+### 
+
 
 
 global stockpilename
@@ -85,6 +94,7 @@ class menu(object):
 	CSVExport = IntVar()
 	XLSXExport = IntVar()
 	ImgExport = IntVar()
+	GSheetExport = IntVar()
 
 
 s = ttk.Style()
@@ -499,12 +509,160 @@ def ItemScan(screen, garbage):
 				worksheet.write(row + col, 0, data[1])
 				worksheet.write(row + col, 1, data[2])
 			workbook.close()
+
+		# If the GoogleSheet export checkbox is ticked
+		if menu.GSheetExport.get() == 1:
+			gs_export()
+
+
 		print(datetime.datetime.now()-start)
 		print("Items Checked:",checked)
 	else:
 		popup("NoStockpile")
 
+def gs_export(stockpile,data_export):
+	try:
+		# Verify if the ggl_api_key.json exist
+		if os.path.exists("google_api_key.json"):
+			# Connection to the Google Spreadsheet
+			print("Attempt gspread connection")
+			gc = gspread_connect()
 
+
+			#titles_list = []
+			#for spreadsheet in gc.openall():
+			#	titles_list.append({'title': spreadsheet.title, 'id': spreadsheet.id})
+			#print(titles_list)
+
+			stckplr_sh = ""
+			try:
+				# Open the spreadsheet with name 'Stockpiler'
+				print("Opening 'Stockpiler' spreadsheet")
+				stckplr_sh = gc.open('Stockpiler')
+				#stckplr_sh.share('drougavis@gmail.com', perm_type='user', role='owner')
+
+				#Sorted Contents: [('86', 'Soldier Supplies Crate', 0, 0, 1), ('93', 'Garrison Supplies Crate', 0, 1, 1), ('90', 'Bunker Supplies Crate', 0, 2, 1), ('194', 'Dunne Transport', 1, 5, 0), ('91', 'Bmat Crate', 273, 5, 1), ('94', 'HEmat Crate', 242, 5, 1), ('92', 'Emat Crate', 157, 5, 1), ('87', 'Diesel Crate', 64, 5, 1), ('96', 'Rmat Crate', 15, 5, 1)] 
+				cells_to_update = []
+				# Unless they modify the sheets order, the 'Stockpile' should be ID 0.
+				print("Find the first sheet")
+				ws = stckplr_sh.get_worksheet(0)
+				print(ws)
+				df_val = pd.DataFrame(ws.get_all_records())
+
+				column_list = df_val.columns.values.tolist()
+				#print(column_list)
+
+				stockpile_found = False
+				stockpile_col = 0
+				print("Search for stockpile name in column")
+				for col in column_list:
+					if col == stockpile:
+						stockpile_col = column_list.index(stockpile)
+						stockpile_found = True
+						break;
+					else:
+						stockpile_col += 1
+				if not stockpile_found:
+					cells_to_update.append(Cell(row=1, col=stockpile_col+1, value=stockpile))
+
+				for item_info in data_export:
+					item_id = item_info[0]
+					item_name = item_info[1].replace(" Crate","")
+					item_qty = item_info[2]
+
+					item_loc = df_val.loc[df_val["ID"] == int(item_id)]
+					item_row = item_loc.index[0]
+
+					if stockpile_found: 
+						item_stock_qty = df_val.loc[item_row][stockpile]
+					else:
+						item_stock_qty = 0
+					#item_addr = [item_row+2, stockpile_col+1]
+
+					# Need to find the QTY in GS, and compare to in-game QTY
+					# If QTY differs, then the item cell should be updated
+					if str(item_stock_qty) != str(item_qty):
+						cells_to_update.append(Cell(row=item_row+2, col=stockpile_col+1, value=item_qty))
+					else:
+						print("Same Quantity between GSheet and in-game")
+
+				print(cells_to_update)
+				ws.update_cells(cells_to_update)
+						
+		
+			except gspread.SpreadsheetNotFound:
+				print("'Stockpiler' spreadsheet not found. Creating a new one...")
+				# If the Spreadsheet with the name 'Stockpiler' is not found then we create it
+				stckplr_sh = gc.create('Stockpiler')
+
+				# New Spreadsheet, all items must be added according to the filter
+				init_spreadsheet(stckplr_sh,items.data)
+				#.add_worksheet(title="A worksheet", rows="100", cols="20")
+
+				pass
+			
+
+		else:
+			# Popup window saying that the Ggl Spreadsheet Json is not present.
+			print("Missing Google API Key JSON")
+		pass
+	except Exception as e:
+		print(e)
+
+
+def gspread_connect():
+  # Scopes needed with gspread to access (drive) and read the spreadsheet (spreadsheets)
+  scopes = [
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive'
+  ]
+  # Connection with the keys from json file
+  credentials = ServiceAccountCredentials.from_json_keyfile_name("google_api_key.json", scopes)
+  client = gspread.authorize(credentials)
+
+  return client
+
+def init_spreadsheet(sh,items):
+	# This is how i see the spreadsheet
+	'''
+	0 	ID 	Name 	Category 		Faction 
+	1	1	'Dusk.' 'Small Weapons' 'Colonial'
+	2
+	3
+
+	'''
+
+	col_id = []
+	col_name = []
+	col_category = []
+	col_faction = []
+	for item in items:
+	#	print(item)
+	#	['1', 'X', 'X', 'Dusk ce.III', 'Dusk', 'Assault Rifle', '7.92mm', 'Colonial', 'Small Weapons', '1', '1', '10', '165', '0', '0', '0', '0', '0']
+	#	['2', 'X', 'X', 'Booker Storm Rifle Model 838', 'Booker', 'Assault Rifle', '7.92mm', 'Warden', 'Small Weapons', '1', '2', '10', '165', '0', '0', '0', '0', '0']	
+		
+		# Send items based on the filter
+		if item[17] != 1:
+			#print(item[0])
+			#print(type(item[0]))
+			item_id = int(item[0]) 
+			if item_id != 0: #Excluding the "Reserved"
+				col_id.append(item_id)
+				col_name.append(item[3])
+				col_category.append(item[8])
+				col_faction.append(item[7])
+
+	items_dict = {'ID': col_id, 'Name': col_name, "Category": col_category, "Faction": col_faction}
+	df = pd.DataFrame(data=items_dict)
+
+	# Creating a new worksheet "Stockpile"
+	ws = sh.add_worksheet(title="Stockpile", rows="300", cols="20")
+	ws.update([df.columns.values.tolist()] + df.values.tolist())
+	sheet_todel = sh.get_worksheet(0)
+	sh.del_worksheet(sheet_todel)
+	# User must provide it's email to gain access to the spreadsheet
+	sh.share('drougavis@gmail.com', perm_type='user', role='owner')
+	return
 
 def on_activate():
 	# print("Button Hit")
@@ -765,6 +923,7 @@ def SaveFilter():
 		exportfile.write(str(menu.CSVExport.get()) + "\n")
 		exportfile.write(str(menu.XLSXExport.get()) + "\n")
 		exportfile.write(str(menu.ImgExport.get()) + "\n")
+		exportfile.write(str(menu.GSheetExport.get()) + "\n")
 
 
 def CreateButtons(self):
@@ -805,6 +964,8 @@ def CreateButtons(self):
 	XLSXCheck.grid(row=menu.iconrow, column=6)
 	ImgCheck = ttk.Checkbutton(StockpileFrame, text="Image?", variable=menu.ImgExport)
 	ImgCheck.grid(row=menu.iconrow, column=7)
+	GSHEETCheck = ttk.Checkbutton(StockpileFrame, text="Ggl Sheet?", variable=menu.GSheetExport)
+	GSHEETCheck.grid(row=menu.iconrow, column=8)
 
 	menu.iconrow += 1
 	SaveImg = PhotoImage(file="UI/Save.png")
@@ -977,10 +1138,16 @@ if os.path.exists("Config.txt"):
 	menu.CSVExport.set(int(content[0]))
 	menu.XLSXExport.set(int(content[1]))
 	menu.ImgExport.set(int(content[2]))
+	menu.GSheetExport.set(int(content[3]))
 else:
 	menu.CSVExport.set(1)
 	menu.XLSXExport.set(1)
 	menu.ImgExport.set(1)
+	menu.GSheetExport.set(1)
+
+stockpile_test = "ST_Test4"
+data_test = [('86', 'Soldier Supplies Crate', 0, 0, 1), ('15', '0.44 Crate', 0, 1, 1), ('90', 'Bunker Supplies Crate', 0, 2, 1), ('194', 'Dunne Transport', 1, 5, 0), ('91', 'Bmat Crate', 273, 5, 1), ('94', 'HEmat Crate', 242, 5, 1), ('92', 'Emat Crate', 157, 5, 1), ('87', 'Diesel Crate', 64, 5, 1), ('96', 'Rmat Crate', 15, 5, 1)] 
+gs_export(stockpile_test,data_test)
 
 CreateButtons("")
 
