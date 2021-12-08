@@ -17,11 +17,10 @@ import xlsxwriter
 import threading
 ### Accessing Google Sheet ###
 from oauth2client.service_account import ServiceAccountCredentials
+import json
 import gspread 
 from gspread.cell import Cell
 import pandas as pd
-import requests
-import pytz
 ### 
 
 
@@ -512,13 +511,14 @@ def ItemScan(screen, garbage):
 
 		# If the GoogleSheet export checkbox is ticked
 		if menu.GSheetExport.get() == 1:
-			gs_export()
+			gs_export(stockpile,sortedcontents)
 
 
 		print(datetime.datetime.now()-start)
 		print("Items Checked:",checked)
 	else:
 		popup("NoStockpile")
+
 
 def gs_export(stockpile,data_export):
 	try:
@@ -528,33 +528,46 @@ def gs_export(stockpile,data_export):
 			print("Attempt gspread connection")
 			gc = gspread_connect()
 
-
-			#titles_list = []
-			#for spreadsheet in gc.openall():
-			#	titles_list.append({'title': spreadsheet.title, 'id': spreadsheet.id})
-			#print(titles_list)
+			owner_email = ""
+			allow_afterinit_edit = False
+			with open('google_api_key.json') as gak:
+				gak_data = json.load(gak)
+				owner_email_gak = gak_data["owner_email"]
+				if owner_email_gak != "":
+					owner_email = owner_email_gak
+				allow_afterinit_edit = gak_data["allow_afterinit_edit"]
 
 			stckplr_sh = ""
+			initOk = True
 			try:
 				# Open the spreadsheet with name 'Stockpiler'
 				print("Opening 'Stockpiler' spreadsheet")
 				stckplr_sh = gc.open('Stockpiler')
-				#stckplr_sh.share('drougavis@gmail.com', perm_type='user', role='owner')
+				# To share the spreadsheet, it can be done here, but probably better to let the owner (at init) to share the access.
+				#stckplr_sh.share('my-email@gmail.com', perm_type='user', role='writer')
+			except gspread.SpreadsheetNotFound:
+				print("'Stockpiler' spreadsheet not found. Creating a new one...")
+				# If the Spreadsheet with the name 'Stockpiler' is not found then we create it
+				stckplr_sh = gc.create('Stockpiler')
 
-				#Sorted Contents: [('86', 'Soldier Supplies Crate', 0, 0, 1), ('93', 'Garrison Supplies Crate', 0, 1, 1), ('90', 'Bunker Supplies Crate', 0, 2, 1), ('194', 'Dunne Transport', 1, 5, 0), ('91', 'Bmat Crate', 273, 5, 1), ('94', 'HEmat Crate', 242, 5, 1), ('92', 'Emat Crate', 157, 5, 1), ('87', 'Diesel Crate', 64, 5, 1), ('96', 'Rmat Crate', 15, 5, 1)] 
+				# New Spreadsheet, all items must be added according to the filter
+				initOk = init_spreadsheet(stckplr_sh,items.data,owner_email)
+				pass
+
+			if initOk:
 				cells_to_update = []
 				# Unless they modify the sheets order, the 'Stockpile' should be ID 0.
-				print("Find the first sheet")
 				ws = stckplr_sh.get_worksheet(0)
-				print(ws)
 				df_val = pd.DataFrame(ws.get_all_records())
+				last_row = len(df_val.index)
 
 				column_list = df_val.columns.values.tolist()
 				#print(column_list)
 
 				stockpile_found = False
 				stockpile_col = 0
-				print("Search for stockpile name in column")
+				#print("Search for stockpile name in column")
+				# Search for column with the stockpile name
 				for col in column_list:
 					if col == stockpile:
 						stockpile_col = column_list.index(stockpile)
@@ -562,6 +575,8 @@ def gs_export(stockpile,data_export):
 						break;
 					else:
 						stockpile_col += 1
+
+				# If the stockpile name is not found, we will add it to the end of the spreadsheet 
 				if not stockpile_found:
 					cells_to_update.append(Cell(row=1, col=stockpile_col+1, value=stockpile))
 
@@ -569,44 +584,56 @@ def gs_export(stockpile,data_export):
 					item_id = item_info[0]
 					item_name = item_info[1].replace(" Crate","")
 					item_qty = item_info[2]
-
 					item_loc = df_val.loc[df_val["ID"] == int(item_id)]
-					item_row = item_loc.index[0]
-
-					if stockpile_found: 
-						item_stock_qty = df_val.loc[item_row][stockpile]
+					# Check if the item ID is present in dataframe/in spreadsheet.
+					# If not, it means that the item was not added at initialization of spreadsheet (filtered), or row deleted manually.
+					if item_loc.empty:
+						#print("Item "+item_name+" not found on the spreadsheet!")
+						# If modification are allowed after init, then we search the item in the items.data and add the row at the end.
+						if allow_afterinit_edit:
+							# Find the last row to write after
+							for init_item in items.data:
+								if int(item_id) == int(init_item[0]):
+									print("item found in init data")
+									cells_to_update.append(Cell(row=last_row+2, col=1, value=int(item_id)))
+									cells_to_update.append(Cell(row=last_row+2, col=2, value=init_item[3]))
+									cells_to_update.append(Cell(row=last_row+2, col=3, value=init_item[8]))
+									cells_to_update.append(Cell(row=last_row+2, col=4, value=init_item[7]))
+									cells_to_update.append(Cell(row=last_row+2, col=stockpile_col+1, value=item_qty))
+									# Increment the last row for the next missing item
+									last_row += 1
+									break;
 					else:
-						item_stock_qty = 0
-					#item_addr = [item_row+2, stockpile_col+1]
+						item_row = item_loc.index[0]
 
-					# Need to find the QTY in GS, and compare to in-game QTY
-					# If QTY differs, then the item cell should be updated
-					if str(item_stock_qty) != str(item_qty):
-						cells_to_update.append(Cell(row=item_row+2, col=stockpile_col+1, value=item_qty))
-					else:
-						print("Same Quantity between GSheet and in-game")
+						if stockpile_found: 
+							item_stock_qty = df_val.loc[item_row][stockpile]
+						else:
+							item_stock_qty = 0
 
-				print(cells_to_update)
-				ws.update_cells(cells_to_update)
-						
-		
-			except gspread.SpreadsheetNotFound:
-				print("'Stockpiler' spreadsheet not found. Creating a new one...")
-				# If the Spreadsheet with the name 'Stockpiler' is not found then we create it
-				stckplr_sh = gc.create('Stockpiler')
+						# Need to find the QTY in GS, and compare to in-game QTY
+						# If QTY differs, then the item cell should be updated
+						if str(item_stock_qty) != str(item_qty):
+							cells_to_update.append(Cell(row=item_row+2, col=stockpile_col+1, value=item_qty))
+						#else:
+							# No need to update the spreadsheet for that item, qty detected same as qty on the spreadsheet.
+							#print("Same Quantity between GSheet and in-game")
 
-				# New Spreadsheet, all items must be added according to the filter
-				init_spreadsheet(stckplr_sh,items.data)
-				#.add_worksheet(title="A worksheet", rows="100", cols="20")
-
-				pass
-			
-
+					#print(cells_to_update)
+					# Update of the spreadsheet with one batch of all cells that needs to be updated.
+					ws.update_cells(cells_to_update)
+			else:
+				# Popup window saying that the Ggl Spreadsheet Json is not present.
+				print("Error occured while initializing the Google Spreadsheet")
+				popup("ErrorGglSpreadsheet")
 		else:
 			# Popup window saying that the Ggl Spreadsheet Json is not present.
+			logging.info("Impossible to export to Google spreadsheet, API key file 'google_api_key.json' is missing...")
 			print("Missing Google API Key JSON")
-		pass
+			popup("NoGglAPIKeyFile")
 	except Exception as e:
+		logging.info("General error while creating or updating the spreadsheet...")
+		logging.info(e)
 		print(e)
 
 
@@ -622,7 +649,43 @@ def gspread_connect():
 
   return client
 
-def init_spreadsheet(sh,items):
+def init_spreadsheet(sh,items,owner_email):
+	initOk = False
+	try:
+		col_id = []
+		col_name = []
+		col_category = []
+		col_faction = []
+		for item in items:
+			# Send items based on the filter
+			if item[17] != 1:
+				item_id = int(item[0]) 
+				if item_id != 0: #Excluding the "Reserved"
+					col_id.append(item_id)
+					col_name.append(item[3])
+					col_category.append(item[8])
+					col_faction.append(item[7])
+
+		items_dict = {'ID': col_id, 'Name': col_name, "Category": col_category, "Faction": col_faction}
+		df = pd.DataFrame(data=items_dict)
+
+		# Creating a new worksheet "Stockpile"
+		ws = sh.add_worksheet(title="Stockpile", rows="300", cols="20")
+		ws.update([df.columns.values.tolist()] + df.values.tolist())
+		sheet_todel = sh.get_worksheet(0)
+		sh.del_worksheet(sheet_todel)
+		# User must provide it's email to gain access to the spreadsheet
+		# Transfering ownership to the person who init the spreadsheet
+		if owner_email != "":
+			sh.share(owner_email, perm_type='user', role='owner')
+
+		initOk = True
+		pass
+	except Exception as e:
+		logging.info("Error while creating the spreadsheet...")
+		logging.info(e)
+		#print("Error while creating the spreadsheet")
+		pass
 	# This is how i see the spreadsheet
 	'''
 	0 	ID 	Name 	Category 		Faction 
@@ -631,38 +694,7 @@ def init_spreadsheet(sh,items):
 	3
 
 	'''
-
-	col_id = []
-	col_name = []
-	col_category = []
-	col_faction = []
-	for item in items:
-	#	print(item)
-	#	['1', 'X', 'X', 'Dusk ce.III', 'Dusk', 'Assault Rifle', '7.92mm', 'Colonial', 'Small Weapons', '1', '1', '10', '165', '0', '0', '0', '0', '0']
-	#	['2', 'X', 'X', 'Booker Storm Rifle Model 838', 'Booker', 'Assault Rifle', '7.92mm', 'Warden', 'Small Weapons', '1', '2', '10', '165', '0', '0', '0', '0', '0']	
-		
-		# Send items based on the filter
-		if item[17] != 1:
-			#print(item[0])
-			#print(type(item[0]))
-			item_id = int(item[0]) 
-			if item_id != 0: #Excluding the "Reserved"
-				col_id.append(item_id)
-				col_name.append(item[3])
-				col_category.append(item[8])
-				col_faction.append(item[7])
-
-	items_dict = {'ID': col_id, 'Name': col_name, "Category": col_category, "Faction": col_faction}
-	df = pd.DataFrame(data=items_dict)
-
-	# Creating a new worksheet "Stockpile"
-	ws = sh.add_worksheet(title="Stockpile", rows="300", cols="20")
-	ws.update([df.columns.values.tolist()] + df.values.tolist())
-	sheet_todel = sh.get_worksheet(0)
-	sh.del_worksheet(sheet_todel)
-	# User must provide it's email to gain access to the spreadsheet
-	sh.share('drougavis@gmail.com', perm_type='user', role='owner')
-	return
+	return initOk
 
 def on_activate():
 	# print("Button Hit")
@@ -694,14 +726,15 @@ def newstockpopup(image):
 	PopupFrame.pack()
 	PopupWindow.grab_set()
 	PopupWindow.focus_force()
+	PopupWindow.wm_attributes('-topmost', True)
 	im = Image.fromarray(image)
 	tkimage = ImageTk.PhotoImage(im)
-	NewStockpileLabel = ttk.Label(PopupFrame, text="Looks like a new stockpile.")
+	NewStockpileLabel = ttk.Label(PopupFrame, text="Looks like a new stockpile.", width=60)
 	NewStockpileLabel.grid(row=2, column=0)
 	StockpileNameImage = ttk.Label(PopupFrame, image=tkimage)
 	StockpileNameImage.image = tkimage
 	StockpileNameImage.grid(row=5, column=0)
-	StockpileNameLabel = ttk.Label(PopupFrame, text="What is the name of the stockpile?")
+	StockpileNameLabel = ttk.Label(PopupFrame, text="What is the name of the stockpile?", width=60)
 	StockpileNameLabel.grid(row=7, column=0)
 	StockpileNameEntry = ttk.Entry(PopupFrame)
 	StockpileNameEntry.grid(row=8, column=0)
@@ -729,12 +762,19 @@ def popup(type):
 	PopupFrame.pack()
 	PopupWindow.grab_set()
 	PopupWindow.focus_force()
+	PopupWindow.wm_attributes('-topmost', True)
 	if type == "NoFox":
 		NoFoxholeLabel = ttk.Label(PopupFrame, text="Foxhole isn't running.\nLaunch Foxhole and retry.")
 		NoFoxholeLabel.grid(row=2, column=0)
 	elif type == "NoStockpile":
 		NoStockpileLabel = ttk.Label(PopupFrame, text="Didn't detect stockpile.\nHover over a stockpile on the map and retry.")
 		NoStockpileLabel.grid(row=2, column=0)
+	elif type == "NoGglAPIKeyFile":
+		NoGglAPIKeyFileLabel = ttk.Label(PopupFrame, text="Error while exporting to Google Spreadsheet.\nCause: The file 'google_api_key.json' is missing.\nCheck the README for more info on how to configure access to Google Spreadsheet.")
+		NoGglAPIKeyFileLabel.grid(row=2, column=0)
+	elif type == "ErrorGglSpreadsheet":
+		ErrorGglSpreadsheetLabel = ttk.Label(PopupFrame, text="Error while exporting to Google Spreadsheet.\nCause: An error happened while creating the spreadsheet.\nCheck the README for more info on how to configure access to Google Spreadsheet.\nCheck the last log and raise to the dev any error.")
+		ErrorGglSpreadsheetLabel.grid(row=2, column=0)
 	OKButton = ttk.Button(PopupFrame, text="OK", command=lambda: Destroy("blah"))
 	PopupWindow.bind('<Return>', Destroy)
 	OKButton.grid(row=10, column=0, sticky="NSEW")
@@ -906,7 +946,7 @@ StockpileFrame.bind(
 
 # If enough items are added, then the height below will have to be modified to account for any new button rows
 # Remember to make sure the Quit button is displayed
-canvas.create_window((0, 0), window=StockpileFrame, anchor="nw", height="1691p", width="550p")
+canvas.create_window((0, 0), window=StockpileFrame, anchor="nw", height="1835p", width="537p")
 canvas.configure(yscrollcommand=scrollbar.set)
 OuterFrame.pack()
 scrollbar.pack(side="right", fill="y")
@@ -957,16 +997,15 @@ def CreateButtons(self):
 	# CSVExport = IntVar()
 	# XLSXExport = IntVar()
 	# ImgExport = IntVar()
-
+	GSHEETCheck = ttk.Checkbutton(StockpileFrame, text="GSheet?", variable=menu.GSheetExport)
+	GSHEETCheck.grid(row=menu.iconrow, column=4)
 	CSVCheck = ttk.Checkbutton(StockpileFrame, text="CSV?", variable=menu.CSVExport)
 	CSVCheck.grid(row=menu.iconrow, column=5)
 	XLSXCheck = ttk.Checkbutton(StockpileFrame, text="XLSX?", variable=menu.XLSXExport)
 	XLSXCheck.grid(row=menu.iconrow, column=6)
 	ImgCheck = ttk.Checkbutton(StockpileFrame, text="Image?", variable=menu.ImgExport)
 	ImgCheck.grid(row=menu.iconrow, column=7)
-	GSHEETCheck = ttk.Checkbutton(StockpileFrame, text="Ggl Sheet?", variable=menu.GSheetExport)
-	GSHEETCheck.grid(row=menu.iconrow, column=8)
-
+	
 	menu.iconrow += 1
 	SaveImg = PhotoImage(file="UI/Save.png")
 	SaveButton = ttk.Button(StockpileFrame, image=SaveImg, command=SaveFilter)
@@ -1144,10 +1183,6 @@ else:
 	menu.XLSXExport.set(1)
 	menu.ImgExport.set(1)
 	menu.GSheetExport.set(1)
-
-stockpile_test = "ST_Test4"
-data_test = [('86', 'Soldier Supplies Crate', 0, 0, 1), ('15', '0.44 Crate', 0, 1, 1), ('90', 'Bunker Supplies Crate', 0, 2, 1), ('194', 'Dunne Transport', 1, 5, 0), ('91', 'Bmat Crate', 273, 5, 1), ('94', 'HEmat Crate', 242, 5, 1), ('92', 'Emat Crate', 157, 5, 1), ('87', 'Diesel Crate', 64, 5, 1), ('96', 'Rmat Crate', 15, 5, 1)] 
-gs_export(stockpile_test,data_test)
 
 CreateButtons("")
 

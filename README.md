@@ -36,6 +36,28 @@ If the stockpile is a named stockpile that Stockpile has seen before:
 - CSV TXT file of contents
 - A copy of the stockpile image grabbed by Stockpiler
 
+# Google Spreadsheet export
+To export the data to a Google Spreadsheet, Stockpiler is using the library gspread (https://docs.gspread.org/en/latest/index.html). It requires a Google API key (JSON file), which content should be place in the "google_api_key.json" file (do not overwrite the file itself). To do so, please follow these steps:
+ - Enable API Access:
+ 	- Head to Google Developers Console (https://console.developers.google.com/) and create a new project
+ 	- Once the project is created, click on the button "+ ENABLE APIS AND SERVICES"
+ 	- Search for "Google Drive API", and enable it. This is to allow access to the spreadsheet.
+ 	- Search for "Google Sheets API" and enable it. This is to read and write on the spreadsheet.
+ - Go to “APIs & Services > Credentials” and choose “Create credentials > Service account key”.
+ - Fill out the form
+ - Click “Create” and “Done”.
+ - Press “Manage service accounts” above Service Accounts.
+ - Press on ⋮ near recently created service account and select “Manage keys” and then click on “ADD KEY > Create new key”.
+ - Select JSON key type and press “Create”.
+
+The "google_api_key.json" on the project contains 2 custom variables, if erased please add them again:
+ - "owner_email": "username@gmail.com",
+ - "allow_afterinit_edit": false
+
+"owner_email": allows the user with that email to gain ownership of the spreadsheet during it's first initialization.
+"allow_afterinit_edit": To set to 'true' or 'false'. Stockpiler allows to filter items detected. If some items are filter during the creation of the spreadsheet (or later manually deleted), if the filtered item is detected while using Stockpiler, and if set to 'true' a new row will be added for the missing item.  
+
+
 
 Stockpiler runs each stockpile "grab" as a separate thread, so you do not have to wait for one to complete before initiating the next
 
