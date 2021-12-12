@@ -7,6 +7,9 @@ Constructive criticism is welcome, but keep in mind **I DO NOT CODE FOR A LIVING
 
 Current Features:
 - Hotkey (F3) to read and transcribe contents of any stockpile/BB/Town Base/etc from the Map.
+- Hotkey (F2) to screenshot a stockpile without reading it
+- Results tab displaying a spreadsheet of the results, from which you can copy to paste elsewhere
+- Learning mode for creating a custom icon set for those that use Mods
 - App is threaded, so you can initiate a new scan while previous scan(s) are still processing.
 - Most items can be read, other than those with missing icons as noted in Missing.csv
 - Ability to set a filter to ignore unwanted items
@@ -17,10 +20,13 @@ Current Features:
 # To use:
 1. Launch Foxhole and Deploy
 2. Launch Stockpiler
-3. Open your Map
-4. Hover your cursor over the Stockpile/Bunker Base/Town Hall/etc you wish to transcribe **on the map**
+3. If you're using modded icons, set your icon set to Modded in the upper left and make sure Learning Mode is checked
+4. Open your Map
+5. Hover your cursor over the Stockpile/Bunker Base/Town Hall/etc you wish to transcribe **on the map**
 - Remember you can tab while hovering over a Seaport/Storage Depot where you have multiple private stockpiles
-5. Press the **F3** key
+6. Press the **F3** key
+
+If you are using modded icons and have Learning Mode on, you will get a series of popups where you are asked to identify each new icon it finds.  It will remember your choices, so over time you will build your set.  Once it has run through all new icons with you, it will export the results as normal.
 
 If the stockpile is a named stockpile that Stockpiler has never seen before:
 - Stockpiler will display an image of the stockpile name and ask you to enter the name
@@ -65,7 +71,7 @@ Stockpiler runs each stockpile "grab" as a separate thread, so you do not have t
 Currently, pressing the F2 key will grab an image of the stockpile/BB/Relic Base contents you are hovering over and save it to the root folder.  If you are willing to help contribute missing items so that Stockpiler can properly tally them, these are the images that are needed.  Please message me on Discord if you're interested in helping get the remaining missing item images added.
 My Discord is ruttiger#6198
 
-Special thanks to **Catalinuru** and **AceAstra** for their help testing and hunting down missing icons.
+Special thanks to **Catalinuru**, **AceAstra** and **Drougavis** for their help testing and hunting down missing icons.
 
 Compiled versions compiled to EXE using Nuitka
 
