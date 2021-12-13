@@ -198,10 +198,8 @@ for filteritem in range(len(filter)):
 		print("failed to apply filters to items.data")
 
 
-print(items.data[1])
-
-
 ### For troubleshooting
+# print(items.data[1])
 # data[item].extend(filter[item][1])
 # print(data)
 # Names = [item[3] for item in data]
@@ -345,19 +343,19 @@ def Learn(LearnInt, image):
 	res = cv2.matchTemplate(screen, numbox, cv2.TM_CCOEFF_NORMED)
 	threshold = .99
 	numloc = np.where(res >= threshold)
-	print("found them here:", numloc)
-	print(len(numloc[0]))
+	#print("found them here:", numloc)
+	#print(len(numloc[0]))
 	for spot in range(len(numloc[0])):
 		# Stockpiles never displayed in upper left under State of the War area
 		# State of the War area throws false postives for icons
 		if numloc[1][spot] < (resx * .2) and numloc[0][spot] < (resy * .24) and not TestImage:
 			pass
 		else:
-			print("x:", numloc[1][spot], " y:",numloc[0][spot])
+			#print("x:", numloc[1][spot], " y:",numloc[0][spot])
 			# cv2.imshow('icon', screen[int(numloc[0][spot]+2):int(numloc[0][spot]+36), int(numloc[1][spot]-38):numloc[1][spot]-4])
 			# cv2.waitKey(0)
 			currenticon = screen[int(numloc[0][spot]+2):int(numloc[0][spot]+36), int(numloc[1][spot]-38):numloc[1][spot]-4]
-			print("currenticon:", currenticon.shape)
+			#print("currenticon:", currenticon.shape)
 			if menu.Set.get() == 0:
 				folder = "CheckImages//Default//"
 			else:
@@ -368,7 +366,7 @@ def Learn(LearnInt, image):
 				result = cv2.matchTemplate(currenticon, checkimage, cv2.TM_CCOEFF_NORMED)
 				threshold = .99
 				if np.amax(result) > threshold:
-					print("Found:", imagefile)
+					#print("Found:", imagefile)
 					Found = True
 					break
 			if not Found:
@@ -580,7 +578,7 @@ def ItemScan(screen, garbage):
 
 	start = datetime.datetime.now()
 
-	print(items.ThisStockpileName)
+	#print(items.ThisStockpileName)
 	if menu.Set.get() == 0:
 		folder = "CheckImages//Default//"
 	else:
@@ -595,7 +593,7 @@ def ItemScan(screen, garbage):
 			# Grab all the individual vehicles and shippables
 			StockpileImagesAppend = [(str(item[0]), folder + str(item[0]) + ".png", item[3], item[8], item[17]) for item in items.data if (str(item[9]) == "7" and str(item[17]) == "0") or (str(item[9]) == "8" and str(item[17]) == "0")]
 			StockpileImages.extend(StockpileImagesAppend)
-			print("Checking for:", StockpileImages)
+			#print("Checking for:", StockpileImages)
 		elif FoundStockpileType in SingleList:
 			print("Single Type")
 			# Grab all the individual items
@@ -609,7 +607,7 @@ def ItemScan(screen, garbage):
 
 		stockpilecontents = []
 		checked = 0
-		print("StockpileImages", StockpileImages)
+		#print("StockpileImages", StockpileImages)
 		for image in StockpileImages:
 			checked += 1
 			try:
@@ -683,9 +681,9 @@ def ItemScan(screen, garbage):
 				pass
 				# print(len(numberlist))
 
-		print("Stockpile Contents:", stockpilecontents)
+		#print("Stockpile Contents:", stockpilecontents)
 		items.sortedcontents = list(sorted(stockpilecontents, key=lambda x: (x[3], x[4], -x[2])))
-		print("Sorted Contents:", items.sortedcontents)
+		#print("Sorted Contents:", items.sortedcontents)
 		# Here's where we sort stockpilecontents by category, then number, so they spit out the same as screenshot
 		# Everything but vehicles and shippables first, then single vehicle, then crates of vehicles, then single shippables, then crates of shippables
 		if items.ThisStockpileName in ("Seaport","Storage Depot","Outpost","Town Base","Relic Base","Bunker Base","Encampment","Safe House"):
@@ -723,11 +721,11 @@ def ItemScan(screen, garbage):
 
 		# If the GoogleSheet export checkbox is ticked
 		if menu.GSheetExport.get() == 1:
-			gs_export(stockpile,sortedcontents)
+			gs_export(items.ThisStockpileName,items.sortedcontents)
 
 
 		print(datetime.datetime.now()-start)
-		print("Items Checked:",checked)
+		#print("Items Checked:",checked)
 		items.slimcontents = items.sortedcontents
 		for sublist in items.slimcontents:
 			del sublist[3:5]
@@ -769,6 +767,10 @@ def gs_export(stockpile,data_export):
 				# New Spreadsheet, all items must be added according to the filter
 				initOk = init_spreadsheet(stckplr_sh,items.data,owner_email)
 				pass
+			except Exception as e:
+				logging.info(e)
+				initOk = False
+				pass
 
 			if initOk:
 				cells_to_update = []
@@ -776,7 +778,6 @@ def gs_export(stockpile,data_export):
 				ws = stckplr_sh.get_worksheet(0)
 				df_val = pd.DataFrame(ws.get_all_records())
 				last_row = len(df_val.index)
-
 				column_list = df_val.columns.values.tolist()
 				#print(column_list)
 
@@ -796,11 +797,22 @@ def gs_export(stockpile,data_export):
 				if not stockpile_found:
 					cells_to_update.append(Cell(row=1, col=stockpile_col+1, value=stockpile))
 
+				list_new_item_id = []
 				for item_info in data_export:
 					item_id = item_info[0]
+					isCrate = False
+					if "Crate" in item_info[1]:
+						isCrate = True
 					item_name = item_info[1].replace(" Crate","")
 					item_qty = item_info[2]
 					item_loc = df_val.loc[df_val["ID"] == int(item_id)]
+
+					if isCrate:
+						list_new_item_id.append(str(item_id)+"c")
+						item_loc = df_val.loc[df_val["ID"] == str(item_id)+"c"]
+					else:
+						list_new_item_id.append(item_id)
+
 					# Check if the item ID is present in dataframe/in spreadsheet.
 					# If not, it means that the item was not added at initialization of spreadsheet (filtered), or row deleted manually.
 					if item_loc.empty:
@@ -810,11 +822,16 @@ def gs_export(stockpile,data_export):
 							# Find the last row to write after
 							for init_item in items.data:
 								if int(item_id) == int(init_item[0]):
-									print("item found in init data")
-									cells_to_update.append(Cell(row=last_row+2, col=1, value=int(item_id)))
+									if isCrate:
+										cells_to_update.append(Cell(row=last_row+2, col=1, value=int(item_id)))
+										cells_to_update.append(Cell(row=last_row+2, col=4, value="Item"))
+									else:
+										cells_to_update.append(Cell(row=last_row+2, col=1, value=str(item_id)+"c"))
+										cells_to_update.append(Cell(row=last_row+2, col=4, value="Crate"))
+
 									cells_to_update.append(Cell(row=last_row+2, col=2, value=init_item[3]))
 									cells_to_update.append(Cell(row=last_row+2, col=3, value=init_item[8]))
-									cells_to_update.append(Cell(row=last_row+2, col=4, value=init_item[7]))
+									cells_to_update.append(Cell(row=last_row+2, col=5, value=init_item[7]))
 									cells_to_update.append(Cell(row=last_row+2, col=stockpile_col+1, value=item_qty))
 									# Increment the last row for the next missing item
 									last_row += 1
@@ -831,13 +848,31 @@ def gs_export(stockpile,data_export):
 						# If QTY differs, then the item cell should be updated
 						if str(item_stock_qty) != str(item_qty):
 							cells_to_update.append(Cell(row=item_row+2, col=stockpile_col+1, value=item_qty))
-						#else:
+						else:
 							# No need to update the spreadsheet for that item, qty detected same as qty on the spreadsheet.
-							#print("Same Quantity between GSheet and in-game")
+							print("Same Quantity between GSheet and in-game")
 
-					#print(cells_to_update)
-					# Update of the spreadsheet with one batch of all cells that needs to be updated.
+				# If not a new Stockpile, cleaning any items with no more quantity for that sotckpile and reset the qty to ""
+				if stockpile_found:
+					for stck_item_id in df_val["ID"]:
+						stck_item_loc = ""
+						if "c" in str(stck_item_id):
+							stck_item_loc = df_val.loc[df_val["ID"] == stck_item_id]
+						else: 
+							stck_item_loc = df_val.loc[df_val["ID"] == int(stck_item_id)]
+						stck_item_row = stck_item_loc.index[0]
+						stck_item_qty = df_val.loc[stck_item_row][stockpile]
+						if str(stck_item_id) not in list_new_item_id and stck_item_qty != "":
+							cells_to_update.append(Cell(row=stck_item_row+2, col=stockpile_col+1, value=""))
+
+
+				#print(cells_to_update)
+				print("Cells to update: "+str(len(cells_to_update)))
+				#print(cells_to_update)
+				# Update of the spreadsheet with one batch of all cells that needs to be updated.
+				if cells_to_update:
 					ws.update_cells(cells_to_update)
+				print("Google Spreadsheet Updated.")
 			else:
 				# Popup window saying that the Ggl Spreadsheet Json is not present.
 				print("Error occured while initializing the Google Spreadsheet")
@@ -867,26 +902,38 @@ def gspread_connect():
 
 def init_spreadsheet(sh,items,owner_email):
 	initOk = False
+	#print(items)
+	# item: ['100', 'X', '-', 'Aluminum', '', '', '', 'Both', 'Resource', '5', '14', '', '', '', '', '', '', '0']
 	try:
 		col_id = []
 		col_name = []
 		col_category = []
+		col_unit = []
 		col_faction = []
 		for item in items:
-			# Send items based on the filter
+			# Populate Spreadsheet items based on the filter
 			if item[17] != 1:
 				item_id = int(item[0]) 
 				if item_id != 0: #Excluding the "Reserved"
 					col_id.append(item_id)
 					col_name.append(item[3])
 					col_category.append(item[8])
+					col_unit.append("Item")
 					col_faction.append(item[7])
 
-		items_dict = {'ID': col_id, 'Name': col_name, "Category": col_category, "Faction": col_faction}
+					# Duplicating almost every rows to add the crates versions.
+					if item[2] != "-":
+						col_id.append(str(item_id)+"c")
+						col_name.append(item[3])
+						col_category.append(item[8])
+						col_unit.append("Crate")
+						col_faction.append(item[7])
+
+		items_dict = {'ID': col_id, 'Name': col_name, "Category": col_category,"Unit": col_unit, "Faction": col_faction}
 		df = pd.DataFrame(data=items_dict)
 
 		# Creating a new worksheet "Stockpile"
-		ws = sh.add_worksheet(title="Stockpile", rows="300", cols="20")
+		ws = sh.add_worksheet(title="Stockpile", rows="500", cols="20")
 		ws.update([df.columns.values.tolist()] + df.values.tolist())
 		sheet_todel = sh.get_worksheet(0)
 		sh.del_worksheet(sheet_todel)
@@ -1068,6 +1115,11 @@ def XLSXExport():
 		workbook.close()
 
 
+def GSheetExport():
+	if items.stockpilecontents != []:
+		gs_export(items.ThisStockpileName,items.sortedcontents)
+
+
 # Created this function in order to test changing the hotkey while the program is running
 # def changehotkey():
 # 	print("That hotkey hit")
@@ -1247,7 +1299,7 @@ TableCanvas.pack(side=TOP, fill=BOTH, expand=1)
 FilterFrame = ttk.Frame(FilterCanvas)
 TableFrame = ttk.Frame(TableCanvas)
 
-FilterCanvas.create_window((0, 0), window=FilterFrame, anchor="nw", height="1837p", width="550p")
+FilterCanvas.create_window((0, 0), window=FilterFrame, anchor="nw", height="1874p", width="550p")
 # TableCanvas.create_window((0, 0), window=TableFrame, anchor="nw", height="432", width="402p")
 TableCanvas.create_window((0, 0), window=TableFrame, anchor="nw", height="410p", width="402p")
 
@@ -1258,13 +1310,6 @@ FilterFrame.bind(
 	)
 )
 
-# If enough items are added, then the height below will have to be modified to account for any new button rows
-# Remember to make sure the Quit button is displayed
-canvas.create_window((0, 0), window=StockpileFrame, anchor="nw", height="1835p", width="537p")
-canvas.configure(yscrollcommand=scrollbar.set)
-OuterFrame.pack()
-scrollbar.pack(side="right", fill="y")
-canvas.pack(side="left", fill="both", expand=1)
 fillerdata = (0)
 TableBottom = ttk.Frame(TableCanvas)
 TableBottom.columnconfigure(0, weight=1)
@@ -1274,7 +1319,7 @@ CSVButton = ttk.Button(TableBottom, text="Re-Export CSV", command=CSVExport, sty
 CSVButton.grid(row=0, column=0, pady=5, sticky=NSEW)
 XSLXButton = ttk.Button(TableBottom, text="Re-Export XLSX", command=XLSXExport, style="EnabledButton.TButton")
 XSLXButton.grid(row=0, column=1, pady=5, sticky=NSEW)
-GExportButton = ttk.Button(TableBottom, text="Re-Export GExport", command=GSheetExport, style="EnabledButton.TButton")
+GExportButton = ttk.Button(TableBottom, text="Re-Export GSheetExport", command=GSheetExport, style="EnabledButton.TButton")
 GExportButton.grid(row=0, column=2, pady=5, sticky=NSEW)
 ReRunLearn = ttk.Button(TableBottom, text="Re-Run w/ Learn", command=lambda: Learn(1, LastStockpile))
 ReRunLearn.grid(row=0, column=3, pady=5, sticky=NSEW)
@@ -1350,13 +1395,16 @@ def CreateButtons(self):
 	# ImgExport = IntVar()
 
 	SetLabel = ttk.Label(FilterFrame, text="Icon set?", style="TLabel")
-	SetLabel.grid(row=menu.iconrow, column=0)
+	SetLabel.grid(row=menu.iconrow, column=3)
 	DefaultRadio = ttk.Radiobutton(FilterFrame, text="Default", variable=menu.Set, value=0)
-	DefaultRadio.grid(row=menu.iconrow, column=1)
+	DefaultRadio.grid(row=menu.iconrow, column=4)
 	ModdedRadio = ttk.Radiobutton(FilterFrame, text="Modded", variable=menu.Set, value=1)
-	ModdedRadio.grid(row=menu.iconrow, column=2)
+	ModdedRadio.grid(row=menu.iconrow, column=5)
 	LearningCheck = ttk.Checkbutton(FilterFrame, text="Learning Mode?", variable=menu.Learning)
-	LearningCheck.grid(row=menu.iconrow, column=3, columnspan=2)
+	LearningCheck.grid(row=menu.iconrow, column=6, columnspan=2)
+
+	menu.iconrow += 1
+
 	GSHEETCheck = ttk.Checkbutton(FilterFrame, text="GSheet?", variable=menu.GSheetExport)
 	GSHEETCheck.grid(row=menu.iconrow, column=4)
 	CSVCheck = ttk.Checkbutton(FilterFrame, text="CSV?", variable=menu.CSVExport)
@@ -1707,6 +1755,10 @@ CreateButtons("")
 # 	Hotkeys.TargetLocHotkey: on_activate_two})
 # listener.start()
 
+### Testing to Export to Google Spreadsheet ### 
+dataset_test = [('86', 'Soldier Supplies Crate', 0, 0, 1), ('93', 'Garrison Supplies Crate', 0, 1, 1), ('90', 'Bunker Supplies Crate', 0, 2, 1), ('194', 'Dunne Transport', 1, 5, 0), ('91', 'Basic Materials', 273, 5, 1), ('105', "Specialist's Overcoat Crate", 242, 5, 1), ('92', 'Explosive Materials Crate', 157, 5, 1), ('87', 'Diesel Crate', 64, 5, 1), ('96', 'Refined Materials Crate', 15, 5, 1)]
+gs_export("Test Stck 2",dataset_test)
+######
 
 bindings = [
 	[["f2"], None, on_activate],
